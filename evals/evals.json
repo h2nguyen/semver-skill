@@ -1,0 +1,38 @@
+{
+  "skill_name": "semver",
+  "evals": [
+    {
+      "id": 1,
+      "name": "minor-bump-with-typing-caveat",
+      "prompt": "Our public Python library is at 2.4.7. I added a new optional parameter `tz=\"UTC\"` to `parse_date()` — the default keeps the old behavior. What version should we publish? Quick yes/no on whether this is breaking, then the version.",
+      "expected_output": "Verdict: MINOR → 2.5.0. Rationale tied to spec §7 (backward-compatible API addition). Should flag the .pyi/.d.ts typing-level caveat for typed consumers.",
+      "assertions": [
+        {"text": "Verdict is MINOR / 2.5.0", "category": "correctness"},
+        {"text": "Cites spec §7 or equivalent for backward-compatible addition", "category": "rationale"},
+        {"text": "Mentions the typing-level caveat for statically typed consumers", "category": "completeness"}
+      ]
+    },
+    {
+      "id": 2,
+      "name": "precedence-ordering-with-rc",
+      "prompt": "I have these versions of a library and need to know which one a `>=1.0.0-rc.2` constraint would resolve to in ascending order: 1.0.0, 1.0.0-rc.1, 1.0.0-rc.11, 1.0.0-rc.2, 1.0.0-beta. Sort them and explain the rc.2 vs rc.11 ordering specifically — I always get that one wrong.",
+      "expected_output": "Sorted: 1.0.0-beta, 1.0.0-rc.1, 1.0.0-rc.2, 1.0.0-rc.11, 1.0.0. Explanation invokes §11.4.1 (numeric identifiers compared numerically, not lexically). Should ideally use the bundled script.",
+      "assertions": [
+        {"text": "Final sort is correct: beta, rc.1, rc.2, rc.11, 1.0.0", "category": "correctness"},
+        {"text": "Explains rc.2 < rc.11 via numeric (not lexical) comparison, citing §11.4.1", "category": "rationale"},
+        {"text": "Mentions 1.0.0 outranks all pre-releases of 1.0.0 (§11.3)", "category": "completeness"}
+      ]
+    },
+    {
+      "id": 3,
+      "name": "zero-major-recovery",
+      "prompt": "Ugh. We're at 0.7.3 and I just merged a PR that completely rewrites the public auth interface — old function signatures are gone. We haven't published it yet. Two questions: (1) what version do I publish? (2) is this finally the moment to release 1.0.0? The library is used in production by 3 customer companies.",
+      "expected_output": "(1) 0.8.0 per the dominant 0.y.z convention (MINOR = breaking). (2) Yes, three production users with a now-stable-ish API is exactly the spec's 1.0.0 trigger. Suggest publishing 1.0.0 directly with a clear migration note, or 0.8.0 first if a soak period is wanted.",
+      "assertions": [
+        {"text": "Identifies 0.8.0 as the SemVer-correct bump in 0.y.z (MINOR-is-breaking convention)", "category": "correctness"},
+        {"text": "Recommends or strongly suggests going to 1.0.0 given production users, citing FAQ", "category": "judgment"},
+        {"text": "Discusses migration / deprecation considerations for the auth interface change", "category": "completeness"}
+      ]
+    }
+  ]
+}
