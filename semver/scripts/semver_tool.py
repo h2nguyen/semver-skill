@@ -3,18 +3,31 @@
 semver_tool.py — deterministic operations on SemVer 2.0.0 versions.
 
 Implements the official spec (https://semver.org/spec/v2.0.0.html) exactly.
-Uses the official regex from §11 with no shortcuts.
+Uses the official regex from the spec's FAQ with no shortcuts.
 
 Subcommands:
     validate VERSION                 → exit 0 if valid SemVer, 1 otherwise.
+                                       Strict: `v1.2.3` is NOT a SemVer (FAQ);
+                                       the output hints at the underlying SemVer.
     parse VERSION                    → JSON breakdown of components.
     compare V1 V2                    → -1 / 0 / 1 per §11 precedence rules.
     bump VERSION (major|minor|patch) → next version, with resets per §7/§8.
+    bump VERSION pre(major|minor|patch) TAG
+                                     → bump core, then start `-TAG.1` — a
+                                       pre-release of the NEXT version.
     bump VERSION prerelease [TAG]    → iterate a pre-release identifier.
+                                       Warns if the result sorts at or below
+                                       the input (precedence downgrade).
     bump VERSION release             → strip pre-release & build metadata.
+                                       Errors if there is nothing to strip
+                                       (re-releasing an identical version
+                                       would violate §3 immutability).
     sort V1 V2 [V3 ...]              → newline-separated, ascending precedence.
 
-Build metadata is preserved by `parse` and `validate`. It is dropped by
+`validate` is strict per the spec. The other commands strip a leading `v`
+(git-tag convention) for convenience before operating.
+
+Build metadata is preserved by `parse`. It is dropped by
 `bump major|minor|patch|release` (a new release starts clean) and ignored
 by `compare`/`sort` (per §10, build metadata does not affect precedence).
 """
@@ -29,7 +42,7 @@ from dataclasses import dataclass, field
 from typing import Optional
 
 
-# Official regex from semver.org §11, numbered capture groups.
+# Official regex from the semver.org spec FAQ, numbered capture groups.
 # Compatible with ECMAScript, PCRE, Python, Go.
 SEMVER_RE = re.compile(
     r"^"
@@ -86,11 +99,8 @@ def parse(version: str) -> Version:
 
 
 def is_valid(version: str) -> bool:
-    try:
-        parse(version)
-        return True
-    except ValueError:
-        return False
+    """Strict validity per the spec: `v1.2.3` is NOT a valid SemVer (FAQ)."""
+    return SEMVER_RE.match(version) is not None
 
 
 def _compare_identifier(a: str, b: str) -> int:
@@ -145,7 +155,14 @@ def bump(version: Version, kind: str, tag: Optional[str] = None) -> Version:
       'major'      → bump major, reset minor=0, patch=0, drop pre/build (§8).
       'minor'      → bump minor, reset patch=0, drop pre/build (§7).
       'patch'      → bump patch, drop pre/build (§6).
-      'release'    → drop pre-release and build (finalize a pre-release as GA).
+      'premajor'   → bump major, then start `-TAG.1`: a pre-release of the
+      'preminor'     next major/minor/patch version. This is how to start a
+      'prepatch'     pre-release when the current version is already
+                     released — a pre-release of the SAME core would sort
+                     below it (§11.3). `tag` is required.
+      'release'    → drop pre-release and build (finalize a pre-release as
+                     GA). Errors if there is nothing to drop: re-releasing
+                     an identical version would violate §3 immutability.
       'prerelease' → iterate the pre-release. If `tag` is provided and
                      differs from the current pre-release prefix, switch
                      lanes (e.g. alpha → beta). Otherwise increment the
@@ -157,13 +174,31 @@ def bump(version: Version, kind: str, tag: Optional[str] = None) -> Version:
         return Version(version.major, version.minor + 1, 0)
     if kind == "patch":
         return Version(version.major, version.minor, version.patch + 1)
+    if kind in ("premajor", "preminor", "prepatch"):
+        if tag is None:
+            raise ValueError(
+                f"'{kind}' requires a pre-release tag (e.g. alpha, beta, rc): "
+                f"the result is CORE-TAG.1."
+            )
+        core = {
+            "premajor": (version.major + 1, 0, 0),
+            "preminor": (version.major, version.minor + 1, 0),
+            "prepatch": (version.major, version.minor, version.patch + 1),
+        }[kind]
+        return Version(*core, prerelease=(tag, "1"))
     if kind == "release":
+        if not version.prerelease and not version.build:
+            raise ValueError(
+                f"{version} is already a full release - there is no "
+                "pre-release or build metadata to strip. Re-releasing the "
+                "same version would violate spec rule 3 (immutability)."
+            )
         return Version(version.major, version.minor, version.patch)
     if kind == "prerelease":
         return _bump_prerelease(version, tag)
     raise ValueError(
-        f"Unknown bump kind: {kind!r}. "
-        "Expected one of: major, minor, patch, release, prerelease."
+        f"Unknown bump kind: {kind!r}. Expected one of: major, minor, patch, "
+        "premajor, preminor, prepatch, release, prerelease."
     )
 
 
@@ -173,8 +208,9 @@ def _bump_prerelease(version: Version, tag: Optional[str]) -> Version:
 
     If `tag` is given:
       - If pre-release is empty or its first identifier differs from `tag`,
-        start fresh: `1.2.3 → 1.2.3-{tag}.1` (also bumps patch is NOT done —
-        the caller decides whether to bump core first).
+        start fresh: `1.2.3 → 1.2.3-{tag}.1`. The core version is NOT
+        bumped — use premajor/preminor/prepatch to pre-release the NEXT
+        version instead.
       - If the current first identifier matches `tag`, increment the
         trailing numeric, like below.
 
@@ -218,11 +254,19 @@ def _bump_prerelease(version: Version, tag: Optional[str]) -> Version:
 # ─── CLI ──────────────────────────────────────────────────────────────────
 
 def _cmd_validate(args: argparse.Namespace) -> int:
-    ok = is_valid(args.version)
-    if ok:
+    if is_valid(args.version):
         print(f"{args.version}: VALID")
         return 0
-    print(f"{args.version}: INVALID", file=sys.stderr)
+    stripped = strip_v_prefix(args.version)
+    if stripped != args.version and is_valid(stripped):
+        print(
+            f"{args.version}: INVALID - a leading 'v' is a tagging "
+            f"convention, not part of the version (spec FAQ). "
+            f"The SemVer is '{stripped}'.",
+            file=sys.stderr,
+        )
+    else:
+        print(f"{args.version}: INVALID", file=sys.stderr)
     return 1
 
 
@@ -243,6 +287,11 @@ def _cmd_parse(args: argparse.Namespace) -> int:
         "is_prerelease": bool(v.prerelease),
         "is_initial_development": v.major == 0,
     }
+    if strip_v_prefix(args.version) != args.version:
+        out["note"] = (
+            "Leading 'v' stripped: it is a tagging convention, "
+            "not part of the SemVer (spec FAQ)."
+        )
     print(json.dumps(out, indent=2))
     return 0
 
@@ -272,6 +321,22 @@ def _cmd_bump(args: argparse.Namespace) -> int:
     except ValueError as e:
         print(str(e), file=sys.stderr)
         return 1
+    if args.kind == "prerelease" and compare(bumped, v) <= 0:
+        if not v.prerelease:
+            print(
+                f"warning: {bumped} sorts BELOW {v} (spec 11.3: a "
+                f"pre-release precedes its normal version). If {v} is "
+                f"already published, use premajor/preminor/prepatch to "
+                f"start a pre-release of the NEXT version instead.",
+                file=sys.stderr,
+            )
+        else:
+            print(
+                f"warning: {bumped} does not sort above {v} - switching "
+                f"to an earlier pre-release lane is a precedence "
+                f"downgrade (spec 11.4).",
+                file=sys.stderr,
+            )
     print(str(bumped))
     return 0
 
@@ -317,9 +382,15 @@ def main(argv: Optional[list[str]] = None) -> int:
     p_bump.add_argument("version")
     p_bump.add_argument(
         "kind",
-        choices=["major", "minor", "patch", "release", "prerelease"],
+        choices=[
+            "major", "minor", "patch",
+            "premajor", "preminor", "prepatch",
+            "release", "prerelease",
+        ],
         help=(
             "major/minor/patch: per spec §6-§8 with resets. "
+            "premajor/preminor/prepatch: bump core, then start -TAG.1 "
+            "(pre-release of the NEXT version; TAG required). "
             "release: drop pre-release & build (finalize). "
             "prerelease: iterate pre-release; provide TAG to start/switch."
         ),
@@ -328,7 +399,10 @@ def main(argv: Optional[list[str]] = None) -> int:
         "tag",
         nargs="?",
         default=None,
-        help="Optional pre-release tag (alpha/beta/rc/etc.) for `prerelease`.",
+        help=(
+            "Pre-release tag (alpha/beta/rc/etc.). Required for "
+            "premajor/preminor/prepatch; optional for prerelease."
+        ),
     )
     p_bump.set_defaults(func=_cmd_bump)
 

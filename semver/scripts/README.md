@@ -2,15 +2,15 @@
 
 Deterministic operations on SemVer 2.0.0 versions. Pure Python stdlib, no
 dependencies. Implements <https://semver.org/spec/v2.0.0.html> exactly,
-using the official regex from §11.
+using the official regex from the spec's FAQ.
 
 ## Commands
 
 ```bash
-# Validate
+# Validate (strict: `v1.2.3` is NOT a SemVer per the spec FAQ)
 python semver_tool.py validate 1.0.0-alpha.beta+sha.abc   # exit 0
 python semver_tool.py validate 01.2.3                     # exit 1 (leading zero)
-python semver_tool.py validate v1.2.3                     # exit 0 (strips `v`)
+python semver_tool.py validate v1.2.3                     # exit 1, hints that the SemVer is `1.2.3`
 
 # Parse to JSON
 python semver_tool.py parse 2.4.7-rc.2+build.91
@@ -36,6 +36,17 @@ python semver_tool.py bump 1.4.7-rc.2+build.91 major      # → 2.0.0 (pre & bui
 python semver_tool.py bump 1.0.0-rc.2 prerelease          # → 1.0.0-rc.3
 python semver_tool.py bump 1.0.0-alpha.5 prerelease beta  # → 1.0.0-beta.1 (switch lane)
 python semver_tool.py bump 1.0.0-rc.7 release             # → 1.0.0 (finalize)
+python semver_tool.py bump 1.2.3 release                  # exit 1: nothing to finalize (§3 immutability)
+
+# Start a pre-release of the NEXT version (tag required)
+python semver_tool.py bump 1.4.7 preminor rc              # → 1.5.0-rc.1
+python semver_tool.py bump 1.4.7 prepatch rc              # → 1.4.8-rc.1
+python semver_tool.py bump 1.4.7 premajor alpha           # → 2.0.0-alpha.1
+
+# `prerelease` warns on stderr when the result does not sort above the
+# input — e.g. starting a pre-release on an already-released version
+# (1.0.0 → 1.0.0-alpha.1 sorts BELOW 1.0.0, §11.3) or switching to an
+# earlier lane (rc → alpha). The version is still printed to stdout.
 
 # Sort ascending precedence (the canonical spec §11.4 example):
 python semver_tool.py sort 1.0.0 1.0.0-rc.1 1.0.0-beta.11 1.0.0-beta.2 \

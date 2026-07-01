@@ -169,6 +169,9 @@ consumer parsing the response needs to update.
 Spec §4: when MAJOR == 0, **anything MAY change at any time**. The public
 API is not stable.
 
+The spec FAQ's starting point: begin initial development at `0.1.0` and
+increment MINOR for each subsequent release.
+
 In practice, two conventions dominate the ecosystem:
 
 **Convention A (most common, "MINOR is breaking")**:
