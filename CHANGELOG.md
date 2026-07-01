@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.2.0] - 2026-07-01
+
 ### Added
 
 - `bump` kinds `premajor` / `preminor` / `prepatch` in `semver_tool.py`:
@@ -80,5 +82,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   improvement of the Skill's trigger description and decision quality.
 - GitHub Actions CI workflow running the test suite on Python 3.10 – 3.13.
 
-[Unreleased]: https://github.com/h2nguyen/semver-skill/compare/v0.1.0...HEAD
+[Unreleased]: https://github.com/h2nguyen/semver-skill/compare/v0.2.0...HEAD
+[0.2.0]: https://github.com/h2nguyen/semver-skill/compare/v0.1.0...v0.2.0
 [0.1.0]: https://github.com/h2nguyen/semver-skill/releases/tag/v0.1.0
