@@ -114,6 +114,11 @@ Going from `1.4.7-rc.2+build.91` to a final release is `1.4.7` — pre-release
 and build metadata are dropped at GA. To bump while staying in pre-release,
 work the pre-release identifier: `1.4.7-rc.2 → 1.4.7-rc.3` (no MAJOR/MINOR/PATCH change).
 
+To **start** a pre-release when the current version is already published,
+pre-release the *next* version: `1.4.7 → 1.5.0-rc.1` (or `1.4.8-rc.1`,
+`2.0.0-rc.1`). A pre-release of the same core (`1.4.7-rc.1`) would sort
+*below* the published `1.4.7` (§11.3) — a downgrade.
+
 For deterministic operations (parse / validate / compare / bump), use the
 bundled script:
 
@@ -123,6 +128,8 @@ python scripts/semver_tool.py parse    1.0.0-alpha.1+sha.abc
 python scripts/semver_tool.py compare  1.0.0-rc.2 1.0.0-rc.11
 python scripts/semver_tool.py bump     2.4.7 minor       # → 2.5.0
 python scripts/semver_tool.py bump     2.4.7 major       # → 3.0.0
+python scripts/semver_tool.py bump     2.4.7 preminor rc # → 2.5.0-rc.1 (pre-release of the NEXT version)
+python scripts/semver_tool.py bump     1.4.0-rc.2 prerelease  # → 1.4.0-rc.3
 python scripts/semver_tool.py sort     1.0.0 1.0.0-rc.1 1.0.0-alpha 1.0.0-beta
 ```
 
@@ -149,12 +156,14 @@ When `MAJOR == 0`, the public API is explicitly not stable. The spec says
 "anything MAY change at any time." Common conventions on top of the spec
 (documented further in `references/decision-guide.md`):
 
+- Start initial development at `0.1.0` and bump MINOR for each subsequent
+  release (spec FAQ).
 - Treat MINOR (`0.Y.z`) bumps as "breaking allowed."
 - Treat PATCH (`0.y.Z`) bumps as "should be backward compatible."
 - Go to `1.0.0` when the API is stable, when production usage exists, or when
   you're "worrying a lot about backward compatibility" (FAQ quote).
 
-## Validation regex (official, from the spec)
+## Validation regex (official, from the spec's FAQ)
 
 The official ECMAScript-compatible regex:
 
@@ -162,8 +171,12 @@ The official ECMAScript-compatible regex:
 ^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)(?:-((?:0|[1-9]\d*|\d*[a-zA-Z-][0-9a-zA-Z-]*)(?:\.(?:0|[1-9]\d*|\d*[a-zA-Z-][0-9a-zA-Z-]*))*))?(?:\+([0-9a-zA-Z-]+(?:\.[0-9a-zA-Z-]+)*))?$
 ```
 
-`v1.2.3` is **not** a SemVer — the leading `v` is a convention (e.g. git
-tags), the SemVer is `1.2.3`. Always strip a leading `v` before validating.
+`v1.2.3` is **not** a SemVer (spec FAQ) — the leading `v` is a tagging
+convention (e.g. `git tag v1.2.3`); the SemVer inside it is `1.2.3`. When
+asked to validate `v1.2.3`, the correct answer is "invalid as written, but
+the underlying `1.2.3` is valid." The bundled `validate` command is strict
+about this and prints that hint; the other commands strip a leading `v`
+for convenience.
 
 ## Output conventions
 
@@ -199,6 +212,10 @@ If no convention exists, default to Markdown.
   ship a corrective release that restores compatibility, and consider
   whether to also bump MAJOR if the broken behavior is now load-bearing
   (FAQ).
+- **Starting a pre-release after the version already shipped**:
+  `1.4.7-rc.1` sorts *below* a published `1.4.7` (§11.3). Pre-release the
+  next version instead: `bump 1.4.7 prepatch rc → 1.4.8-rc.1` (or
+  `preminor`/`premajor`).
 
 For every other edge case, consult `references/spec.md` and
 `references/decision-guide.md` rather than reasoning from intuition.

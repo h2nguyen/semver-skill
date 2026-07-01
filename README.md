@@ -68,6 +68,7 @@ python semver/scripts/semver_tool.py validate "1.0.0-alpha.beta+sha.abc"
 python semver/scripts/semver_tool.py parse    "2.4.7-rc.2+build.91"
 python semver/scripts/semver_tool.py compare  "1.0.0-rc.2" "1.0.0-rc.11"
 python semver/scripts/semver_tool.py bump     "2.4.7" minor          # → 2.5.0
+python semver/scripts/semver_tool.py bump     "2.4.7" preminor rc    # → 2.5.0-rc.1
 python semver/scripts/semver_tool.py bump     "1.0.0-rc.7" release    # → 1.0.0
 python semver/scripts/semver_tool.py sort     1.0.0 1.0.0-rc.1 1.0.0-alpha 1.0.0-beta
 ```
@@ -90,7 +91,7 @@ follows the Skill packaging convention (zip of the skill folder).
 python -m unittest discover semver/tests/ -v
 ```
 
-All 34 tests should pass. The canonical §11.4 precedence chain test
+All 48 tests should pass. The canonical §11.4 precedence chain test
 (`test_canonical_precedence_chain`) verifies the comparison algorithm
 against the example chain from the spec:
 
@@ -107,8 +108,8 @@ against the example chain from the spec:
   calls with explicit reasoning.
 - **Deterministic where possible.** Validation, parsing, comparison, bumping,
   and sorting all route through the Python CLI — never reasoned from intuition.
-  The CLI uses the official regex from §11 and the precedence algorithm
-  exactly as specified.
+  The CLI uses the official regex from the spec's FAQ and the §11
+  precedence algorithm exactly as specified.
 - **Progressive disclosure.** `SKILL.md` is intentionally lean (~220 lines).
   Deep material lives in `references/` and loads only when the relevant
   question domain comes up.

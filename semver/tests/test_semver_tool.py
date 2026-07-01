@@ -67,11 +67,29 @@ class TestValidation(unittest.TestCase):
         self.assertFalse(st.is_valid("1.0.0-"))
         self.assertFalse(st.is_valid("1.0.0+"))
         self.assertFalse(st.is_valid("1.0.0-alpha."))
+        self.assertFalse(st.is_valid("1.0.0-alpha..1"))
 
-    def test_v_prefix_stripped(self):
-        # FAQ: `v1.2.3` is not a SemVer, but the tool strips a leading `v`
-        # for convenience (matches git-tag convention).
-        self.assertTrue(st.is_valid("v1.2.3"))
+    def test_invalid_shapes(self):
+        # §2: exactly three dot-separated numeric elements.
+        for v in ["1", "1.2", "1.2.3.4", " 1.2.3", "1.2.3 ", "1.2.x"]:
+            self.assertFalse(st.is_valid(v), v)
+
+    def test_invalid_identifier_characters(self):
+        # §9: identifiers are [0-9A-Za-z-] only.
+        self.assertFalse(st.is_valid("1.0.0-alpha_beta"))
+        self.assertFalse(st.is_valid("1.0.0-alpha.01"))  # leading zero (§9)
+
+    def test_build_metadata_may_have_leading_zeros(self):
+        # §10 / BNF: build identifiers are <digits>, leading zeros allowed.
+        self.assertTrue(st.is_valid("1.0.0+001"))
+
+    def test_v_prefix_is_not_a_semver(self):
+        # FAQ: `v1.2.3` is not a SemVer — validation is strict about this.
+        self.assertFalse(st.is_valid("v1.2.3"))
+
+    def test_v_prefix_stripped_for_operations(self):
+        # But `parse` (used by compare/bump/sort) strips a leading `v`
+        # for convenience, matching the git-tag convention.
         v = st.parse("v1.2.3")
         self.assertEqual((v.major, v.minor, v.patch), (1, 2, 3))
 
@@ -197,6 +215,31 @@ class TestBump(unittest.TestCase):
         v = st.bump(st.parse("1.0.0-rc.7+sha.abc"), "release")
         self.assertEqual(str(v), "1.0.0")
 
+    def test_release_strips_build_only(self):
+        v = st.bump(st.parse("1.2.3+sha.abc"), "release")
+        self.assertEqual(str(v), "1.2.3")
+
+    def test_release_on_full_release_errors(self):
+        # §3 immutability: re-releasing an identical version is not allowed.
+        with self.assertRaises(ValueError):
+            st.bump(st.parse("1.2.3"), "release")
+
+    def test_premajor_preminor_prepatch(self):
+        # Pre-release of the NEXT version: core bumped with resets, -TAG.1.
+        v = st.parse("1.4.7")
+        self.assertEqual(str(st.bump(v, "premajor", "alpha")), "2.0.0-alpha.1")
+        self.assertEqual(str(st.bump(v, "preminor", "alpha")), "1.5.0-alpha.1")
+        self.assertEqual(str(st.bump(v, "prepatch", "rc")), "1.4.8-rc.1")
+
+    def test_pre_kinds_drop_existing_pre_and_build(self):
+        v = st.bump(st.parse("1.4.7-rc.2+build.91"), "premajor", "alpha")
+        self.assertEqual(str(v), "2.0.0-alpha.1")
+
+    def test_pre_kinds_require_tag(self):
+        for kind in ("premajor", "preminor", "prepatch"):
+            with self.assertRaises(ValueError):
+                st.bump(st.parse("1.4.7"), kind)
+
     def test_prerelease_iterate_increments_trailing_number(self):
         v = st.bump(st.parse("1.0.0-rc.2"), "prerelease")
         self.assertEqual(str(v), "1.0.0-rc.3")
@@ -243,6 +286,41 @@ class TestCLI(unittest.TestCase):
     def test_validate_invalid(self):
         r = self._run("validate", "01.2.3")
         self.assertEqual(r.returncode, 1)
+
+    def test_validate_v_prefix_invalid_with_hint(self):
+        # FAQ: `v1.2.3` is a tag convention, not a SemVer.
+        r = self._run("validate", "v1.2.3")
+        self.assertEqual(r.returncode, 1)
+        self.assertIn("1.2.3", r.stderr)
+        self.assertIn("tag", r.stderr.lower())
+
+    def test_bump_premajor_cli(self):
+        r = self._run("bump", "1.4.7", "premajor", "alpha")
+        self.assertEqual(r.returncode, 0)
+        self.assertEqual(r.stdout.strip(), "2.0.0-alpha.1")
+
+    def test_bump_release_on_full_release_fails(self):
+        r = self._run("bump", "1.2.3", "release")
+        self.assertEqual(r.returncode, 1)
+        self.assertIn("immutability", r.stderr.lower())
+
+    def test_prerelease_downgrade_warns(self):
+        # Starting a pre-release on a clean version sorts BELOW it (§11.3).
+        r = self._run("bump", "1.0.0", "prerelease", "alpha")
+        self.assertEqual(r.returncode, 0)
+        self.assertEqual(r.stdout.strip(), "1.0.0-alpha.1")
+        self.assertIn("warning", r.stderr.lower())
+        # Lane switch backwards (rc → alpha) is also a downgrade.
+        r = self._run("bump", "1.0.0-rc.1", "prerelease", "alpha")
+        self.assertEqual(r.returncode, 0)
+        self.assertEqual(r.stdout.strip(), "1.0.0-alpha.1")
+        self.assertIn("warning", r.stderr.lower())
+
+    def test_prerelease_forward_iteration_does_not_warn(self):
+        r = self._run("bump", "1.0.0-rc.2", "prerelease")
+        self.assertEqual(r.returncode, 0)
+        self.assertEqual(r.stdout.strip(), "1.0.0-rc.3")
+        self.assertNotIn("warning", r.stderr.lower())
 
     def test_parse_json(self):
         r = self._run("parse", "1.0.0-rc.2+sha.abc")

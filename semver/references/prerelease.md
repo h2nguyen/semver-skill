@@ -121,6 +121,23 @@ Use named tiers with dotted iterations:
 In npm: publish with `--tag alpha` / `--tag beta` / `--tag next` so
 consumers don't accidentally install the unstable version.
 
+### Starting a pre-release for the next version
+
+When the current version is already published, a new pre-release must
+target the *next* core version — `1.4.7-rc.1` would sort below the
+published `1.4.7` (§11.3), which makes it a downgrade for any consumer:
+
+```bash
+python scripts/semver_tool.py bump 1.4.7 preminor rc    # → 1.5.0-rc.1
+python scripts/semver_tool.py bump 1.4.7 prepatch rc    # → 1.4.8-rc.1
+python scripts/semver_tool.py bump 1.4.7 premajor beta  # → 2.0.0-beta.1
+```
+
+Pick the core bump (`premajor` / `preminor` / `prepatch`) based on what the
+upcoming release will contain, using the normal MAJOR/MINOR/PATCH decision
+flow. The `prerelease` bump kind warns when it would produce a version that
+does not sort above its input.
+
 ### CI auto-tagging per commit
 
 Use build metadata for the commit identifier:
@@ -185,7 +202,7 @@ to a pre-release when the dependency specifier explicitly opts in.
   info, it must be in the pre-release identifier.
 - **Pre-release on a patch level for a stable line**: `1.4.7-hotfix.1`
   ranks BELOW `1.4.7`, so if `1.4.7` is already out, this is a downgrade.
-  Use `1.4.8-rc.1` instead.
+  Use `1.4.8-rc.1` instead (`semver_tool.py bump 1.4.7 prepatch rc`).
 
 ## Quick checks
 
